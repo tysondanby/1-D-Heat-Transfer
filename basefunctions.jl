@@ -1,0 +1,1 @@
+insert_and_dedup!(v::Vector, x) = (splice!(v, searchsorted(v,x), [x]); v)
