@@ -25,7 +25,7 @@ mutable struct meshedoneDscene<:MeshedScene
     k #function of position giving thermal conductivity
 end
 
-struct meshingsettings
+mutable struct meshingsettings
     deploymentscheme#A or B
     ncells#Number of cells
     spacingfunc# one to one function such that f(0) = 0 and f(1) = 1

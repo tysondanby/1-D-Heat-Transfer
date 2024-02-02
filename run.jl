@@ -1,38 +1,38 @@
-using ForwardDiff, LinearAlgebra, Plots
+using ForwardDiff, LinearAlgebra, Plots, Interpolations
 include("structs.jl")
 include("basefunctions.jl")
 include("onetoonefunctions.jl")
 include("meshing.jl")
 include("solving.jl")
+include("visualization.jl")
 
-k(x) = 50.0
+function k(x) 
+    if x < 0.03
+        return 15
+    else
+        return 137*exp(25*x-2)
+    end
+end
 
 ɛ = 0.8
-h = 10
-Tinf = 650
+h = 1000
+Tinf = 300
 Tsur = 250.0
-n = 70
+n = 21
 Tinit = Tinf
 basicmesh = meshingsettings('B',n,linear)
-L = 1.0
+L = .05
 Area(x) = 1.0
 convectionsourcefunc(T) = h*(Tinf-T)
 radiationsourcefunc(T) = -ɛ*5.67E-8*(T^4-Tsur^4)
-sources = [source((0.25,.75),convectionsourcefunc),source((0,1),radiationsourcefunc)]
-BCs = [flux(0),flux(0)]
-layers = [layer("copper",L)]
+generationsourcefunc(T) = 4e6
+sources = [source((0,0.03),generationsourcefunc)]#[source((0.25,.75),convectionsourcefunc),source((0,1),radiationsourcefunc)]
+BCs = [flux(0),convective(h,Tinf)]
+layers = [layer("A",0.03),layer("B",0.02)]
 testscene=oneDscene(basicmesh,L,Area,sources,BCs,layers,250.0,k)
 
 meshedscene = mesh(testscene)
 
-set_up!(meshedscene)
-
-Amatrix, bcolumn = getA_b(meshedscene)
-itterate_solve!(meshedscene)
-Ts = []
-xs = []
-for i = 1:1:length(meshedscene.mesh.nodes)
-    push!(xs,meshedscene.mesh.nodes[i].pos)
-    push!(Ts,meshedscene.mesh.nodes[i].T)
-end
-plot(xs,Ts)
+itterate_solve!(meshedscene) #needed in case source terms are nonlinear
+p1=basic_temp_plot(meshedscene)
+#p2,p3 = convergencestudy(testscene) #TODO, not working

@@ -121,6 +121,8 @@ function itterate_solve!(s::T1;reltol =1e-6) where T1<:meshedoneDscene
     while error >= reltol
         set_up!(s)
         A,b = getA_b(s)
+        global Amatrix = A
+        global bee = b
         newTemps = A \ b
         for i = 1:1:length(s.mesh.nodes)
             s.mesh.nodes[i].T = newTemps[i]
@@ -130,4 +132,50 @@ function itterate_solve!(s::T1;reltol =1e-6) where T1<:meshedoneDscene
         itters = itters +1
         #println(itters) #Usually converges in 6 itters or less
     end
+end
+
+function convergencestudy(s::T1;reltol =1e-4) where T1<:oneDscene
+    intsteps = 1E6
+    newTemps = fill(1E10,3) #10^10 K is pretty unbelievable
+    L = s.length
+    newfit = linear_interpolation([0,L/2,L],newTemps)
+    oldTemps = deepcopy(newTemps)
+    errors = [100.0]
+    itters = [0]
+    CVsused = [0]
+    nCV = 1
+    while errors[end] >= reltol
+        s.meshingsettings.ncells = nCV +2
+        sm = mesh(s)
+        set_up!(sm)
+        A,b = getA_b(sm)
+        newTemps = A \ b
+        newxs = []
+        newTs = []
+        for i = 1:1:length(sm.mesh.nodes)
+            sm.mesh.nodes[i].T = newTemps[i]
+            push!(newTs,newTemps[i])
+            push!(newxs,sm.mesh.nodes[i].pos)
+        end
+        oldfit = deepcopy(newfit)
+        newfit = linear_interpolation(newxs, newTs)
+        function differencesquared(x)
+            return (newfit(x) - oldfit(x))^2
+        end
+        Tavg = integrate(oldfit,0,L,intsteps)/(L)
+        if nCV > 2
+            intsteps =10*nCV*(nCV-1)
+        else
+            intsteps = 10
+        end
+        push!(errors,integrate(differencesquared,0,L,intsteps)^0.5/(Tavg*L))
+        oldTemps = deepcopy(newTemps)
+        push!(itters,itters[end] +1)
+        push!(CVsused,length(sm.mesh.nodes)-2)
+        nCV = nCV + 1
+        println(errors[end]) 
+    end
+    p1 = plot(itters[3:end],errors[3:end], xlims = (0,itters[end]), xlabel = "Number of Iterations", ylabel = "Total Absolute Relative Error",yaxis=:log)
+    p2 = plot(itters[3:end],CVsused[3:end], xlims = (0,itters[end]), ylims = (0,maximum(CVsused[3:end])), xlabel = "Number of Iterations",ylabel = "Number of Control Volumes")
+    return p1,p2
 end
