@@ -113,7 +113,7 @@ function getA_b(s::T) where T<:meshedoneDscene
     return A, b
 end
 
-function itterate_solve!(s::T1;reltol =1e-6) where T1<:meshedoneDscene
+function itterate_solve!(s::T1;reltol =1e-4) where T1<:meshedoneDscene
     newTemps = fill(1E10,length(s.mesh.nodes)) #10^10 K is pretty unbelievable
     oldTemps = deepcopy(newTemps)
     error = 100
@@ -123,11 +123,13 @@ function itterate_solve!(s::T1;reltol =1e-6) where T1<:meshedoneDscene
         A,b = getA_b(s)
         global Amatrix = A
         global bee = b
-        newTemps = A \ b
+        newTemps = tdma_solve(A,b)
+        #newTemps = A \ b
         for i = 1:1:length(s.mesh.nodes)
             s.mesh.nodes[i].T = newTemps[i]
         end
-        error = sum(@. ((newTemps - oldTemps)^2)/(oldTemps^2))^.5
+        #NOTE: changed way to calculate error with HW3
+        error = maximum(@. ((newTemps-oldTemps)^2)^0.5)#sum(@. ((newTemps - oldTemps)^2)/(oldTemps^2))^.5
         oldTemps = deepcopy(newTemps)
         itters = itters +1
         #println(itters) #Usually converges in 6 itters or less
@@ -149,7 +151,7 @@ function convergencestudy(s::T1;reltol =1e-4) where T1<:oneDscene
         sm = mesh(s)
         set_up!(sm)
         A,b = getA_b(sm)
-        newTemps = A \ b
+        newTemps = tdma_solve(A,b)#newTemps = A \ b
         newxs = []
         newTs = []
         for i = 1:1:length(sm.mesh.nodes)
@@ -175,7 +177,34 @@ function convergencestudy(s::T1;reltol =1e-4) where T1<:oneDscene
         nCV = nCV + 1
         println(errors[end]) 
     end
-    p1 = plot(itters[3:end],errors[3:end], xlims = (0,itters[end]), xlabel = "Number of Iterations", ylabel = "Total Absolute Relative Error",yaxis=:log)
-    p2 = plot(itters[3:end],CVsused[3:end], xlims = (0,itters[end]), ylims = (0,maximum(CVsused[3:end])), xlabel = "Number of Iterations",ylabel = "Number of Control Volumes")
-    return p1,p2
+    
+    return dedupe_and_correlate(CVsused[2:end],errors[2:end],xlabel = "Number of Control Volumes", ylabel = "Error",yaxis = :log)
+end
+
+function convergencestudy_knownsolution(s,f;reltol =1e-4)
+    errors = [100.0]
+    itters = [0]
+    CVsused = [0]
+    nCV = 5
+    while errors[end] >= reltol
+        s.meshingsettings.ncells = nCV +2
+        sm = mesh(s)
+        set_up!(sm)
+        A,b = getA_b(sm)
+        newTemps = tdma_solve(A,b)#newTemps = A \ b
+        xs = []
+        for i = 1:1:length(sm.mesh.nodes)
+            push!(xs,sm.mesh.nodes[i].pos)
+        end
+
+        #TODO: no abs()
+
+        push!(errors,maximum(@. ((newTemps)-f(xs))))
+        push!(itters,itters[end] +1)
+        push!(CVsused,length(sm.mesh.nodes)-2)
+        nCV = nCV + 1
+        #println(errors) 
+    end
+    p = dedupe_and_correlate(CVsused[2:end],errors[2:end],xlabel = "Number of Control Volumes", ylabel = "Error",yaxis = :linear)
+    return p
 end
