@@ -6,6 +6,7 @@ include("meshing.jl")
 include("solving.jl")
 include("visualization.jl")
 
+#=
 function homework3_problem1()
     ɛ = 0.8
     h = 1000
@@ -150,7 +151,80 @@ function homework3_problem3()
     #sln = @. solution(exs)
     #plot!(exs,sln)
 end
+=#
 
+function homework5()
+    function Γ(x)
+        return 1
+    end
+    function get_velocity_func(v)
+        function  func(x)
+            return [v,0,0]
+        end
+        return func
+    end
+    function rho(x)
+        return 1
+    end
+    function A(x)
+        return 1
+    end
+    n = 21
+    L = 1
+    Tsur = 1
+    mesh_settings = meshingsettings('A',n,linear)
+    BCs = [constanttemp([0.0,0.0,0.0],1),constanttemp([1.0,0.0,0.0],0)]
+    layers = [layer("A",L)]
+    scenes = []
+    for velocity in [1.0,20.0,75.0]
+        for scheme in ["central","upwind","hybrid","power"]
+            push!(scenes,oneDscene(mesh_settings,scheme,L,A,[],BCs,layers,Tsur,Γ,get_velocity_func(velocity),rho))
+        end
+    end
+    meshedscenes = []
+    for scene in scenes
+        push!(meshedscenes,mesh(scene))
+    end
+    
+    for scene in meshedscenes
+        itterate_solve!(scene)
+    end
+
+    println()
+    println("PROBLEM 1 ---------------------------------")
+    println()
+    velocities =[1.0,20.0,75.0]
+    plots = []
+    for k = 1:1:length(velocities)
+        profiles = []
+        velocity = velocities[k]
+        labels = ["Central","Upwind","Hybrid","Power"]
+        xs = []
+        for j = 1:1:length(labels)
+            index = (k-1)*4+j
+            s = meshedscenes[index]
+            xs = []
+            ϕs = []
+            for i = 1:1:length(s.mesh.nodes)
+                push!(xs,s.mesh.nodes[i].pos[1])
+                push!(ϕs,s.mesh.nodes[i].T)
+            end
+            push!(profiles,ϕs)
+        end
+        exactprofile = zeros(length(xs))
+        @. exactprofile = 1 - (exp(xs*velocity)-1)/(exp(velocity)-1)
+        push!(profiles,exactprofile)
+        println()
+        println()
+        println("Table of values of ϕ for all schemes and u = $velocity")
+        println()
+        printtable([xs,profiles...],["x",labels...,"Exact"])
+
+        push!(plots,plot(xs,profiles,xlabel = "Distance", ylabel = "ϕ",labels=[labels...,"Exact"],title = "ϕ for All Schemes and u = $velocity"))
+    end
+    
+    return plots
+end
 
 #=
 function k(x) 

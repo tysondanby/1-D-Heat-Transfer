@@ -70,8 +70,81 @@ function find_a_b_zero_volume(s,n)
     return ap,an,b
 end
 
+function find_a_b(s,n)
+    node = s.mesh.nodes[n]
+    function totalsource(T)
+        S = 0
+        if length(s.sources) >= 1
+            for i = 1:1:length(s.sources)
+                source = s.sources[i]
+                if source.range[1] < node.pos < source.range[2]
+                    S = S + source.func(T)
+                end
+            end
+        end
+        return S
+    end
+    kP = s.k(node.pos)
+    sp = ForwardDiff.derivative(totalsource,node.T)
+    sc = totalsource(node.T) - node.T*sp
+    an = []
+    for i = 1:1:length(node.neighbors)
+        neighbornode = s.mesh.nodes[node.neighbors[i]]
+        kN = s.k(neighbornode.pos)
+        boundary = s.mesh.boundaries[node.boundaries[i]]
+        pos_vector = neighbornode.pos - node.pos #Points from center of node to center of neighboring node
+        del_n = norm(pos_vector)
+        del_n_P = norm(boundary.pos - node.pos)#amount of del_n in the P region
+        del_n_N = del_n - del_n_P
+        kn = del_n / (del_n_P/kP + del_n_N/kN)
+        pos_unit_vector = pos_vector / del_n
+        V = s.velocity(node.pos)
+        D = kn/del_n
+        F = s.rho(node.pos)*dot(V,pos_unit_vector)
+        P = F/D
+        AP = 0
+        if s.convectionscheme == "central"
+            AP = 1 - 0.5*abs(P)
+        elseif s.convectionscheme == "upwind"
+            AP = 1
+        elseif s.convectionscheme == "hybrid"
+            AP = maximum([1 - 0.5*abs(P),0])
+        elseif s.convectionscheme == "power"
+            AP = maximum([(1 - 0.1*abs(P))^5,0])
+        elseif s.convectionscheme == "exponential"
+            AP = abs(P)/(exp(abs(P))-1)
+        end
+        push!(an,D*AP+maximum([-F,0]))
+        #NOTE: this assumes that  neighbor and boundary indecies correspond
+        
+    end
+    ap = sum(an) - node.vol * sp
+    b = node.vol*sc
+
+    #overwrite the values if there is a BC
+    if node.BC != 0
+        BC = s.BCs[node.BC]
+        if typeof(BC) <:flux
+            ap = kn / del_n
+            an = [kn / del_n]
+            b = BC.value
+        elseif typeof(BC) <:convective
+            ap = kn / del_n + BC.value
+            an = [kn / del_n]
+            b = BC.value*BC.Tinf
+        elseif typeof(BC) <:constanttemp
+            ap = 1.0
+            an=[0]
+            b = BC.value
+        else
+            error("Invalid boundary condition type.")
+        end
+    end
+    return ap,an,b
+end
+
 function set_up!(s::T) where T<:meshedoneDscene
-    if s.meshingsettings.deploymentscheme == 'A'
+    #=if s.meshingsettings.deploymentscheme == 'A'
         #Half node at begining
         @warn("Deployment Scheme A is not complete. use B.")
         #TODO: write a function for the half node's a,b
@@ -83,6 +156,7 @@ function set_up!(s::T) where T<:meshedoneDscene
         #half node at end
 
     else
+        #=
         #zero-volume node at begining
         node = s.mesh.nodes[1]
         node.ap,node.an,node.b = find_a_b_zero_volume(s,1)
@@ -94,6 +168,11 @@ function set_up!(s::T) where T<:meshedoneDscene
         #zero-volume node at end
         node = s.mesh.nodes[end]
         node.ap,node.an,node.b = find_a_b_zero_volume(s,length(s.mesh.nodes))
+        =#
+    end=#
+    for i = 1:1:length(s.mesh.nodes)
+        node = s.mesh.nodes[i]
+        node.ap,node.an,node.b = find_a_b(s,i)
     end
 end
 
