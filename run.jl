@@ -195,34 +195,47 @@ function homework5()
     println()
     velocities =[1.0,20.0,75.0]
     plots = []
+    tableseries = []
+    push!(tableseries,["Central","Upwind","Hybrid","Power Law"])
     for k = 1:1:length(velocities)
         profiles = []
         velocity = velocities[k]
         labels = ["Central","Upwind","Hybrid","Power"]
         xs = []
+        exactprofile = []
+        series_of_errors = []
         for j = 1:1:length(labels)
             index = (k-1)*4+j
             s = meshedscenes[index]
             xs = []
             ϕs = []
+            error = 0.0
             for i = 1:1:length(s.mesh.nodes)
                 push!(xs,s.mesh.nodes[i].pos[1])
+                if j == 1
+                    push!(exactprofile,1 - (exp(xs[i]*velocity)-1)/(exp(velocity)-1))
+                end
                 push!(ϕs,s.mesh.nodes[i].T)
+                error = error + abs(ϕs[i]-exactprofile[i])
             end
+            push!(series_of_errors,error)
             push!(profiles,ϕs)
         end
-        exactprofile = zeros(length(xs))
-        @. exactprofile = 1 - (exp(xs*velocity)-1)/(exp(velocity)-1)
+        push!(tableseries,series_of_errors)
         push!(profiles,exactprofile)
         println()
         println()
         println("Table of values of ϕ for all schemes and u = $velocity")
         println()
-        printtable([xs,profiles...],["x",labels...,"Exact"])
+        printtable([xs,profiles...],["x",labels...,"Exact"],decimals = 4)
 
-        push!(plots,plot(xs,profiles,xlabel = "Distance", ylabel = "ϕ",labels=[labels...,"Exact"],title = "ϕ for All Schemes and u = $velocity"))
+        push!(plots,plot(xs,profiles,xlabel = "Distance", ylabel = "ϕ",labels=reshape([labels...,"Exact"],(1,5)),title = "ϕ for All Schemes and u = $velocity"))
     end
-    
+    println()
+    println()
+    println("Table of The Error of Each Approcimate Solution")
+    println()
+    printtable(tableseries,["Scheme","u = 1","u = 20","u = 75"],decimals = 4)
     return plots
 end
 

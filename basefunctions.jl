@@ -61,8 +61,22 @@ end
 function vectorvaluestostring(v,nd)
     strings = []
     for i = 1:1:length(v)
-        temp = round(v[i]*(10^nd))/(10^nd)
-        push!(strings,"$temp")
+        if typeof(v[i]) == String
+            push!(strings,v[i])
+        else
+            temp = round(v[i]*(10^nd))/(10^nd)
+            push!(strings,"$temp")
+        end
     end
     return strings
+end
+
+function findnumleadingchars(str)
+    index = 1
+    for i = 1:1:length(str)
+        if str[i] == '.'
+            index = i
+        end
+    end
+    return index - 1
 end
