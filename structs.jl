@@ -14,6 +14,8 @@ mutable struct oneDscene<:UnmeshedScene
     k
     velocity
     rho
+    cp
+    Tinit
 end
 
 mutable struct meshedoneDscene<:MeshedScene
@@ -29,6 +31,7 @@ mutable struct meshedoneDscene<:MeshedScene
     k #function of position giving thermal conductivity
     velocity #function of position giving velocity
     rho #function of position giving density
+    cp
 end
 
 mutable struct meshingsettings

@@ -152,7 +152,7 @@ function homework3_problem3()
     #plot!(exs,sln)
 end
 =#
-
+#=
 function homework5()
     function Γ(x)
         return 1
@@ -238,6 +238,127 @@ function homework5()
     printtable(tableseries,["Scheme","u = 1","u = 20","u = 75"],decimals = 4)
     return plots
 end
+=#
+function homework6()
+    Tsur = 293.0
+    Tb = 353.0
+    Tinf = 293.0
+    σ = 5.67E-8
+    w = 1.0
+    b = 0.0003
+    n = 21
+    L = .01
+    function k(x)
+        return 177
+    end
+    function get_velocity_func(v)
+        function  func(x)
+            return [v,0,0]
+        end
+        return func
+    end
+    function rho(x)
+        return 2770.0
+    end
+    function A(x)
+        return w*b
+    end
+    function Tinit(pos)
+        return 293.0
+    end
+    function cp(x)
+        return 875.0
+    end
+    function knownT(xin)
+        x = xin[1]
+        h = 30.0
+        P = 2*w+2*b
+        m = sqrt(h*P/(k(x)*A(x)))
+        theta = cosh(m*(L-x))/cosh(m*L)
+        return theta*(Tb-Tinf) + Tinf
+    end
+
+    plots = []
+    #--------Perform grid independence study on emissivity 0 and h 30
+    h = 30.0
+    ɛ = 0.0
+    function S1(T)
+        return -(2/(b))*(h*(T-Tinf)+ɛ*σ*(T^4-Tinf^4))
+    end
+    mesh_settings = meshingsettings('A',n,linear)
+    BCs = [constanttemp([0.0,0.0,0.0],Tb),flux([1.0,0.0,0.0],0)]
+    layers = [layer("A",L)]
+    testscene = oneDscene(mesh_settings,"central",L,A,[source((0,L),S1)],BCs,layers,Tsur,k,get_velocity_func(0.0),rho,cp,Tinit)
+    push!(plots,convergencestudy_grid(testscene,(10,400)))#convergencestudy_steady(testscene))
+    meshedtestscene = mesh(testscene)
+    itterate_solve_steady!(meshedtestscene)
+    global p1 = basic_temp_plot(meshedtestscene)
+    println("2A done")
+    n = 300#MANUALLY INPUT THE NUMBER OF NODES NEEDED FOR CONVERGENCE
+
+    dx = (L)/(n-1)
+    xsteps = collect(range(0,L,n))
+    mesh_settings = meshingsettings('A',n,linear)
+    scenes = []
+    Qhistories = []
+    for h in [5,30]
+        for ɛ in [0.0,1.0]
+            function S(T)
+                return -(2/b)*(h*(T-Tinf)+ɛ*σ*(T^4-Tsur^4))
+            end
+            push!(scenes,oneDscene(mesh_settings,"central",L,A,[source((0,L),S)],BCs,layers,Tsur,k,get_velocity_func(0.0),rho,cp,Tinit))
+        end
+    end
+    meshedscenes = []
+    for scene in scenes
+        push!(meshedscenes,mesh(scene))
+    end
+    trange = (0,5)
+    #push!(plots,convergence_study_time(deepcopy(scenes[3]),trange,(100,3000))) 
+    println("2B done")
+
+    dt = 0.0025 #MANUALLY INPUT THE dt NEEDED FOR CONVERGENCE
+
+
+    timesteps = collect(trange[1]:dt:trange[2])
+    for i = 1:1:length(meshedscenes)
+        scene = meshedscenes[i]
+        Thistory = unsteady_solve!(scene,timesteps)
+        Qs = []
+        for Ts in Thistory
+            dTdx = (Ts[2]-Ts[1])/dx
+            push!(Qs,-k(0.0)*w*b*dTdx)
+        end
+        h = 0.0
+        ɛ = 0.0
+        if i == 1
+            h=5.0
+            ɛ = 0.0
+        elseif i == 2
+            h = 5
+            ɛ = 1.0
+        elseif i ==3
+            h = 30.0
+            ɛ = 0.0
+        else
+            h = 30.0
+            ɛ = 1.0
+        end
+        function knownTs(xin)
+            x = xin[1]
+            P = 2*w+2*b
+            m = sqrt(h*P/(k(x)*w*b))
+            theta = cosh(m*(L-x))/cosh(m*L)
+            return theta*(Tb-Tinf) + Tinf
+        end
+        
+        push!(plots,plot(timesteps,Qs,xlabel = "Time (s)", ylabel = "Q(t) at Base of Fin (W)",title = "Heat Transfer Over Time for h = $h and ɛ = $ɛ"))
+        push!(plots,plot(xsteps,[Thistory[end],@. knownTs(xsteps)],xlabel = "Position (m)", ylabel = "Temperature (K)",labels=reshape(["Numerical Method","Exact"],(1,2)),title = "St-St Temp Profiles for h = $h and ɛ = $ɛ"))
+    end
+
+    return plots
+end
+
 
 #=
 function k(x) 

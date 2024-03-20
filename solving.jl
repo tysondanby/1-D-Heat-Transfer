@@ -1,3 +1,12 @@
+function record_T(s)
+    Ts = []
+    for i = 1:1:length(s.mesh.nodes)
+        push!(Ts,s.mesh.nodes[i].T)
+    end
+    return Ts
+end
+
+
 function find_a_b_interior(s,n)#n is the node number
     node = s.mesh.nodes[n]
     function totalsource(T)
@@ -77,7 +86,7 @@ function find_a_b(s,n)
         if length(s.sources) >= 1
             for i = 1:1:length(s.sources)
                 source = s.sources[i]
-                if source.range[1] < node.pos < source.range[2]
+                if source.range[1] < node.pos[1] < source.range[2]
                     S = S + source.func(T)
                 end
             end
@@ -88,6 +97,8 @@ function find_a_b(s,n)
     sp = ForwardDiff.derivative(totalsource,node.T)
     sc = totalsource(node.T) - node.T*sp
     an = []
+    kn = 0.0
+    del_n = 0.0
     for i = 1:1:length(node.neighbors)
         neighbornode = s.mesh.nodes[node.neighbors[i]]
         kN = s.k(neighbornode.pos)
@@ -114,7 +125,7 @@ function find_a_b(s,n)
         elseif s.convectionscheme == "exponential"
             AP = abs(P)/(exp(abs(P))-1)
         end
-        push!(an,D*AP+maximum([-F,0]))
+        push!(an,(D*AP+maximum([-F,0]))*s.area(node.pos))
         #NOTE: this assumes that  neighbor and boundary indecies correspond
         
     end
@@ -143,33 +154,8 @@ function find_a_b(s,n)
     return ap,an,b
 end
 
-function set_up!(s::T) where T<:meshedoneDscene
-    #=if s.meshingsettings.deploymentscheme == 'A'
-        #Half node at begining
-        @warn("Deployment Scheme A is not complete. use B.")
-        #TODO: write a function for the half node's a,b
-        for i = 2:1:(length(s.mesh.nodes)-1)
-            node = s.mesh.nodes[i]
-            #middle nodes
-            node.ap,node.an,node.b = find_a_b_interior(s,i)
-        end
-        #half node at end
 
-    else
-        #=
-        #zero-volume node at begining
-        node = s.mesh.nodes[1]
-        node.ap,node.an,node.b = find_a_b_zero_volume(s,1)
-        for i = 2:1:(length(s.mesh.nodes)-1)
-            node = s.mesh.nodes[i]
-            #middle nodes
-            node.ap,node.an,node.b = find_a_b_interior(s,i)
-        end
-        #zero-volume node at end
-        node = s.mesh.nodes[end]
-        node.ap,node.an,node.b = find_a_b_zero_volume(s,length(s.mesh.nodes))
-        =#
-    end=#
+function set_up!(s::T) where T<:meshedoneDscene
     for i = 1:1:length(s.mesh.nodes)
         node = s.mesh.nodes[i]
         node.ap,node.an,node.b = find_a_b(s,i)
@@ -192,7 +178,7 @@ function getA_b(s::T) where T<:meshedoneDscene
     return A, b
 end
 
-function itterate_solve!(s::T1;reltol =1e-4) where T1<:meshedoneDscene
+function itterate_solve_steady!(s::T1;reltol =1e-4) where T1<:meshedoneDscene
     newTemps = fill(1E10,length(s.mesh.nodes)) #10^10 K is pretty unbelievable
     oldTemps = deepcopy(newTemps)
     error = 100
@@ -215,7 +201,7 @@ function itterate_solve!(s::T1;reltol =1e-4) where T1<:meshedoneDscene
     end
 end
 
-function convergencestudy(s::T1;reltol =1e-4) where T1<:oneDscene
+function convergencestudy_steady(s::T1;reltol =1e-4) where T1<:oneDscene
     intsteps = 1E6
     newTemps = fill(1E10,3) #10^10 K is pretty unbelievable
     L = s.length
@@ -236,7 +222,7 @@ function convergencestudy(s::T1;reltol =1e-4) where T1<:oneDscene
         for i = 1:1:length(sm.mesh.nodes)
             sm.mesh.nodes[i].T = newTemps[i]
             push!(newTs,newTemps[i])
-            push!(newxs,sm.mesh.nodes[i].pos)
+            push!(newxs,sm.mesh.nodes[i].pos[1])
         end
         oldfit = deepcopy(newfit)
         newfit = linear_interpolation(newxs, newTs)
@@ -254,7 +240,8 @@ function convergencestudy(s::T1;reltol =1e-4) where T1<:oneDscene
         push!(itters,itters[end] +1)
         push!(CVsused,length(sm.mesh.nodes)-2)
         nCV = nCV + 1
-        println(errors[end]) 
+        #println(errors[end]) 
+        println(newTemps[end])
     end
     
     return dedupe_and_correlate(CVsused[2:end],errors[2:end],xlabel = "Number of Control Volumes", ylabel = "Error",yaxis = :log)
@@ -273,17 +260,113 @@ function convergencestudy_knownsolution(s,f;reltol =1e-4)
         newTemps = tdma_solve(A,b)#newTemps = A \ b
         xs = []
         for i = 1:1:length(sm.mesh.nodes)
-            push!(xs,sm.mesh.nodes[i].pos)
+            push!(xs,sm.mesh.nodes[i].pos[1])
         end
 
-        #TODO: no abs()
+        error = 0.0
+        for i = 1:1:length(newTemps)
+            if abs((newTemps[i])-f(xs[i])) > error
+                error = abs((newTemps[i])-f(xs[i]))
+            end
+        end
 
-        push!(errors,maximum(@. ((newTemps)-f(xs))))
+        push!(errors,error)
         push!(itters,itters[end] +1)
         push!(CVsused,length(sm.mesh.nodes)-2)
         nCV = nCV + 1
-        #println(errors) 
+        println(errors[end]) 
     end
     p = dedupe_and_correlate(CVsused[2:end],errors[2:end],xlabel = "Number of Control Volumes", ylabel = "Error",yaxis = :linear)
+    return p
+end
+
+function timestep!(scene,dt)#TODO: only the fully implicit method is shown, and only for a linear 1D problem
+    dx = norm(scene.mesh.nodes[2].pos-scene.mesh.nodes[1].pos)
+    T = record_T(scene)
+    Tstar = record_T(scene)
+    Told = record_T(scene)
+    n =length(scene.mesh.nodes)
+    A = zeros(n,n)
+    b = zeros(n)
+    k = scene.k(0.0)
+    rho = scene.rho(0.0)
+    cp = scene.cp(0.0)
+    itterflag = true
+    count = 0
+    Trecord = [T]
+    while (maximum(@. abs(T- Trecord[end])) > 10E-6) || itterflag
+        count = count +1
+        #println(count)
+        itterflag = false
+        push!(Trecord,T)
+        
+        for i = 1:1:n
+            totalsource = scene.sources[1].func
+            sp = ForwardDiff.derivative(totalsource,T[i])
+            sc = totalsource(T[i]) - T[i]*sp
+            if i == 1
+                A[1,1] = 1.0
+                b[1] = scene.BCs[1].value
+            elseif i < n
+                A[i,i-1] = -k*dt/dx
+                A[i,i] = rho*cp*dx -sp*dx*dt + 2*k*dt/dx
+                A[i,i+1] = -k*dt/dx
+                b[i] = sc*dx*dt + rho*cp*dx*Told[i]
+            else
+                A[i,i-1] = -2*k*dt/dx
+                A[i,i] = rho*cp*dx -sp*dx*dt + 2*k*dt/dx
+                b[i] = sc*dx*dt + rho*cp*dx*Told[i]
+            end
+        end
+        global Ay = A
+        global Be = b
+        T = (A)\(b)
+        #@assert T != Tstar
+    end
+
+    for i = 1:1:n
+        scene.mesh.nodes[i].T = T[i]
+    end
+end
+
+function unsteady_solve!(scene,timesteps)
+    Thist = []
+    for i = 1:1:(length(timesteps)-1)
+        push!(Thist,record_T(scene))
+        dt = timesteps[i+1]-timesteps[i]
+        timestep!(scene,dt)
+    end
+    push!(Thist,record_T(scene))
+    return Thist
+end
+
+function convergencestudy_grid(s,CVrange)
+    CVnums = collect(CVrange[1]:1:CVrange[2])
+    endvals = []
+    for i = 1:1:length(CVnums)
+        nCV = CVnums[i]
+        s.meshingsettings.ncells = nCV +2
+        sm = mesh(s)
+        set_up!(sm)
+        A,b = getA_b(sm)
+        newTemps = tdma_solve(A,b)#newTemps = A \ b
+        push!(endvals,newTemps[end])
+    end
+    p = dedupe_and_correlate(CVnums[1:end],endvals[1:end],xlabel = "Number of Control Volumes", ylabel = "Tip Temperature (K)",yaxis = :linear)
+    return p
+end
+
+function convergence_study_time(s,trange,steprange)
+    stepnums = collect(steprange[1]:steprange[1]:steprange[2])
+    scene = mesh(s)
+    endvals = []
+    for i = 1:1:length(stepnums)
+        timesteps = collect(trange[1]:(1/stepnums[i]):1)
+        Thistory = unsteady_solve!(scene,timesteps)
+        push!(endvals,Thistory[end][end])
+        stepnum = stepnums[i]
+        println("Evaluated for $stepnum timesteps.")
+    end
+    p = dedupe_and_correlate(stepnums[1:end],endvals[1:end],xlabel = "Number of Timesteps", ylabel = "Tip Temperature (K) at t=1s",yaxis = :linear)
     return p
 end
