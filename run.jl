@@ -359,6 +359,55 @@ function homework6()
     return plots
 end
 
+function homework4()
+    ɛ = 1.0
+    h = 10
+    Tinf = 273
+    Tb = 400
+    Ts = 273
+    n = 82
+    basicmeshes = []
+    function k(x) 
+        return 401
+    end
+    function fT(x)
+        return 273.15
+    end
+    function Teven(x)
+        return 400.0
+    end
+    function getzero(x)
+        return [0.0, 0.0, 0.0]
+    end
+    L = .02
+    D = .003
+
+    Area(x) = pi*D^2
+    sourcefunc(T) = -(4/D)*(h*(T-Tinf)+ɛ*5.67E-8*(T^4-Ts^4))#/Area(0.0)
+    sources = [source((0,L),sourcefunc)]#[source((0.25,.75),convectionsourcefunc),source((0,1),radiationsourcefunc)]
+    BCs = [constanttemp([0.0,0.0,0.0],Tb),flux([L,0.0,0.0],0.0)]
+    layers = [layer("A",L)]
+
+    en = sqrt(4*h/(D*k(0)))
+    solution(x) = (cosh(en*(L-x))/cosh(en*L))*(Tb-Tinf) + Tinf
+    basicmesh = meshingsettings('B',n,linear)
+    scene=oneDscene(basicmesh,"central",L,Area,sources,BCs,layers,Tinf,k,getzero,Teven,Teven,fT)
+    meshedscene = mesh(scene)
+    xs = []
+    startTs = []
+    for node in meshedscene.mesh.nodes
+        push!(xs,node.pos[1])
+        push!(startTs,solution(node.pos[1]))
+    end
+    #println(xs)
+    println("no errors until solving")
+    itterate_solve_GS!(meshedscene,startTs)
+    global p3=basic_temp_plot(meshedscene)
+    exs = collect(0:.001:L)
+    global sln = @. solution(exs)
+    #plot!(exs,sln)
+end
+
 
 #=
 function k(x) 
@@ -368,6 +417,8 @@ function k(x)
         return 137*exp(25*x-2)
     end
 end
+
+
 
 ɛ = 0.8
 h = 1000

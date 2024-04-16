@@ -68,7 +68,7 @@ function mesh(s::T) where T <: oneDscene
         end
         push!(boundaries,boundary(boundaryposs[end],s.area(boundaryposs[end])))
         volume = s.area((boundaryposs[end]+boundaryposs[end-1])/2) * norm(boundaryposs[length(boundaryposs)]-boundaryposs[length(boundaryposs)-1])
-        push!(nodes,node((boundaryposs[end]+boundaryposs[end-1])/2,[length(boundaryposs)-1,length(boundaryposs)+1],[length(boundaryposs)-1,length(boundaryposs)],0.0,0.0,0.0,Tinit,volume,0))
+        push!(nodes,node((boundaryposs[end]+boundaryposs[end-1])/2,[length(boundaryposs)-1,length(boundaryposs)+1],[length(boundaryposs)-1,length(boundaryposs)],0.0,0.0,0.0,s.Tinit((boundaryposs[end]+boundaryposs[end-1])/2),volume,0))
         push!(nodes,node(boundaryposs[end],[length(boundaryposs)],[length(boundaryposs)],0.0,0.0,0.0,s.Tinit(boundaryposs[end]),0.0,0))#Zero volume node
     end
 

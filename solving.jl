@@ -82,7 +82,7 @@ end
 function find_a_b(s,n)
     node = s.mesh.nodes[n]
     function totalsource(T)
-        S = 0
+        S = 0.0
         if length(s.sources) >= 1
             for i = 1:1:length(s.sources)
                 source = s.sources[i]
@@ -125,12 +125,14 @@ function find_a_b(s,n)
         elseif s.convectionscheme == "exponential"
             AP = abs(P)/(exp(abs(P))-1)
         end
+        #println(s.area(node.pos))
         push!(an,(D*AP+maximum([-F,0]))*s.area(node.pos))
         #NOTE: this assumes that  neighbor and boundary indecies correspond
         
     end
+    #println(node.vol)
     ap = sum(an) - node.vol * sp
-    b = node.vol*sc
+    b = node.vol *sc
 
     #overwrite the values if there is a BC
     if node.BC != 0
@@ -198,6 +200,46 @@ function itterate_solve_steady!(s::T1;reltol =1e-4) where T1<:meshedoneDscene
         oldTemps = deepcopy(newTemps)
         itters = itters +1
         #println(itters) #Usually converges in 6 itters or less
+    end
+end
+
+function itterate_solve_GS!(s::T1,newTemps;reltol =1e-6) where T1<:meshedoneDscene
+    #newTemps = fill(1E10,length(s.mesh.nodes)) #10^10 K is pretty 
+    for i = 1:1:length(s.mesh.nodes)
+        s.mesh.nodes[i].T = newTemps[i]
+    end
+    oldTemps = deepcopy(newTemps)
+    error = 100
+    itters = 0
+    while error >= reltol
+        #set_up!(s)
+        #A,b = getA_b(s)
+        #newTemps = tdma_solve(A,b)
+        #newTemps = A \ b
+        for i = 1:1:length(s.mesh.nodes)
+            neighbortemps = []
+            for j = 1:1:length(s.mesh.nodes[i].neighbors)
+                neighbornode = s.mesh.nodes[s.mesh.nodes[i].neighbors[j]]
+                push!(neighbortemps,neighbornode.T)
+            end
+            ap,an,b = find_a_b(s,i)
+            #println(neighbortemps)
+            
+            calc = (dot(an,neighbortemps) + b)/ap
+            newTemps[i] = newTemps[i] + 1.0 * (calc - newTemps[i])
+            s.mesh.nodes[i].T = newTemps[i]
+        end
+        #NOTE: changed way to calculate error with HW3
+        #error = maximum(@. abs(newTemps-oldTemps))#1a
+        dx = 0.003/(s.meshingsettings.ncells-2)
+        k = s.k(0)
+        qnew = 2*k*(newTemps[1]-newTemps[2])/dx
+        qold = 2*k*(oldTemps[1]-oldTemps[2])/dx
+        error = abs(qnew-qold)
+        #println(error2)
+        oldTemps = deepcopy(newTemps)
+        itters = itters +1
+        println(itters) #Usually converges in 6 itters or less
     end
 end
 
